@@ -22,7 +22,6 @@ class Database:
                                         firstname text NOT NULL,
                                         middlename text NOT NULL,
                                         type integer NOT NULL,
-                                        email text NOT NULL,
                                         password text NOT NULL
                                     );"""
         self.run_sql(sql_create_users_table)

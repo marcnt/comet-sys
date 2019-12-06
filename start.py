@@ -1,3 +1,6 @@
 # entry point for the enlistment system application
 
-print("Hello, World")
+import database
+from database import Database
+
+testdb = Database("cometsys.db")

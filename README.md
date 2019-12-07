@@ -19,3 +19,7 @@ is `password`.
 * Courses can be academic or non-academic; non-academic courses won't add up to
   the student's load
 * The system is implemented using a Sqlite3 database.
+
+## Notes
+
+* Rooms must be created before classes can be created to prevent excessive typing.

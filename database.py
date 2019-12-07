@@ -285,7 +285,8 @@ class Database:
                            JOIN ROOMS ON room = roomid
                            JOIN COURSES ON CLASSES.courseid = COURSES.courseid
                            WHERE term = ?
-                           GROUP BY ENROLLMENTS.classid
+                           GROUP BY CLASSES.classid
+                           HAVING COUNT(enrollid) < classlimit
                            ORDER BY coursecode, section
                            """
         

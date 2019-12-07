@@ -242,7 +242,7 @@ class Database:
         cur = self.connection.cursor()
         cur.execute("SELECT prerequisite FROM PREREQS WHERE courseid = ?", (course.get_id(),))
         rows = cur.fetchall()
-        prereqs = list(map(lambda r : r[0]), rows)
+        prereqs = list(map(lambda r : r[0], rows))
         return filter(lambda c : c.get_id() in prereqs, self.get_courses())
 
     def clear_prerequisites(self, course):
@@ -275,6 +275,23 @@ class Database:
         rows = cur.fetchall()
         return list(map(lambda row : Class(row[0], course, row[1], term, None if row[2] == 0 else Instructor(row[2], row[3], row[4], row[5]), Room(row[6], row[7]), row[8]), rows))
 
+    def get_all_classes(self, term):
+        sql_select_class = """
+                           SELECT classid, section, idno, lastname, firstname, middlename, room, location, classlimit,
+                                  COURSES.courseid, coursecode, name, units, is_academic
+                           FROM CLASSES
+                           JOIN INSTRUCTORS ON instructor = idno
+                           JOIN ROOMS ON room = roomid
+                           JOIN COURSES ON CLASSES.courseid = COURSES.courseid
+                           WHERE term = ?
+                           ORDER BY coursecode, section
+                           """
+        
+        cur = self.connection.cursor()
+        cur.execute(sql_select_class, (term,))
+        rows = cur.fetchall()
+        return list(map(lambda row : Class(row[0], Course(row[9], row[10], row[11], row[12], row[13] != 0), row[1], term, None if row[2] == 0 else Instructor(row[2], row[3], row[4], row[5]), Room(row[6], row[7]), row[8]), rows))
+
     def delete_class(self, classid):
         cur = self.connection.cursor()
         cur.execute("DELETE FROM CLASSES WHERE classid = ?", (classid,));
@@ -287,11 +304,59 @@ class Database:
         cur.execute("UPDATE CLASSES SET instructor = ? WHERE classid = ?", (instructor.get_id(), classid))
         self.connection.commit()
 
+    def get_student_load(self, student, term):
+        sql_select_enroll = """
+                            SELECT SUM(COURSES.units)
+                            FROM ENROLLMENTS
+                            JOIN CLASSES ON ENROLLMENTS.classid = CLASSES.classid
+                            JOIN COURSES ON CLASSES.courseid = COURSES.courseid
+                            WHERE studentid = ? AND CLASSES.term = ? AND is_academic != 0
+                            """
+
+        cur = self.connection.cursor()
+        cur.execute(sql_select_enroll, (student.get_id(), term))
+        row = cur.fetchone()
+
+        return 0 if row[0] is None else row[0]
+
     def enlist(self, student, clazz):
-        pass
+        try:
+            sql_create_enroll = "INSERT INTO ENROLLMENTS (studentid, classid, status) VALUES (?, ?, ?)"
+            cur = self.connection.cursor()
+            cur.execute(sql_create_enroll, (student.get_id(), clazz.get_id(), 1))
+            self.connection.commit()
+        except IntegrityError as e:
+            sql_update_enroll = "UPDATE ENROLLMENTS SET status = ? WHERE studentid = ? AND classid = ?"
+            cur = self.connection.cursor()
+            cur.execute(sql_update_enroll, (1, student.get_id(), clazz.get_id()))
+            self.connection.commit()
 
     def drop(self, student, clazz):
-        pass
+        sql_update_enroll = "UPDATE ENROLLMENTS SET status = ? WHERE studentid = ? AND classid = ?"
+        cur = self.connection.cursor()
+        cur.execute(sql_update_enroll, (2, student.get_id(), clazz.get_id()))
+        self.connection.commit()
+
+    def count_enrolled(self, clazz):
+        sql_select_enroll = "SELECT COUNT(enrollid) FROM ENROLLMENTS WHERE classid = ? AND status = ?"
+        
+        cur = self.connection.cursor()
+        cur.execute(sql_select_enroll, (clazz.get_id(), 1))
+        row = cur.fetchone()
+        return 0 if row[0] is None else row[0]
+
+    def has_student_enrolled(self, student, courseid, term):
+        sql_select_enroll = """
+                            SELECT COUNT(enrollid)
+                            FROM ENROLLMENTS
+                            JOIN CLASSES ON CLASSES.classid = ENROLLMENTS.classid
+                            WHERE studentid = ? AND CLASSES.courseid = ? AND status = ? AND term < ?
+                            """
+        
+        cur = self.connection.cursor()
+        cur.execute(sql_select_enroll, (student.get_id(), courseid, 1, term))
+        row = cur.fetchone()
+        return False if row[0] is None else row[0] > 0
 
     def get_student_enrollment(self, student, term):
         sql_select_enroll = """
@@ -306,15 +371,13 @@ class Database:
                             JOIN ROOMS ON room = roomid
                             JOIN COURSES ON CLASSES.courseid = COURSES.courseid
                             WHERE studentid = ? AND CLASSES.term = ?
+                            ORDER BY coursecode
                             """
         
         cur = self.connection.cursor()
         cur.execute(sql_select_enroll, (student.get_id(), term))
         rows = cur.fetchall()
-        return list(map(lambda row : Enrollment(row[0], student, Class(row[1], Course(row[10], row[11], row[12], row[13], row[14]), row[3], term, Instructor(row[6], row[7], row[8], row[9]), Room(row[4], row[5]), row[15]) , row[2]), rows))
-
-
-        
+        return list(map(lambda row : Enrollment(row[0], student, Class(row[1], Course(row[10], row[11], row[12], row[13], row[14]), row[3], term, None if row[6] == 0 else Instructor(row[6], row[7], row[8], row[9]), Room(row[4], row[5]), row[15]) , row[2]), rows))
 
     def login(self, idno, password):
         sql_login = """

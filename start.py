@@ -20,19 +20,83 @@ def student_main(db : Database, student : Student):
 
         choice = int(input("Enter your choice: "))
         if choice == 1:
-
-            pass
-        elif choice == 2:
-            pass
-        elif choice == 3:
             term = int(input("Enter term: "))
-            classes = db.get_student_enrollment(student, term)
-            print("{0:15}{1:10}{2:35}{3:10}{4:10}".format("Course Code", "Section", "Instructor", "Room", "Units"))
-            for c in classes:
+            current_load = db.get_student_load(student, term)
+            print("Your load: " + str(current_load) + ".0 units")
+            all_classes = db.get_all_classes(term)
+            print("{0:3}  {1:15}{2:10}{3:35}{4:10}{5:10}".format("#", "Course Code", "Section", "Instructor", "Room", "Units"))
+            ctr = 1
+            for c in all_classes:
                 cs = c.get_course()
                 ccode = cs.get_course_code()
                 i = c.get_instructor()
-                iname = "{}, {} {}".format(i.get_last(), i.get_first(), i.get_middle())
+                iname = "" if i is None else "{}, {} {}".format(i.get_last(), i.get_first(), i.get_middle())
+                r = c.get_room()
+                rloc = r.get_location()
+                ustr = str(cs.get_units()) + ".0" if cs.is_academic() else "(" + str(cs.get_units()) + ".0)"
+                print("{0:3}  {1:15}{2:10}{3:35}{4:10}{5:10}".format(ctr, ccode, c.get_section(), iname, rloc, ustr))
+                ctr = ctr + 1
+
+            ch = int(input("Select class: "))
+            if ch >= 1 and ch <= len(all_classes):
+                clazz = all_classes[ch - 1]
+                prereqs = db.get_prerequisites(clazz.get_course())
+                
+                proceed = True
+                for req in prereqs:
+                    if not proceed:
+                        break
+                    else:
+                        proceed = db.has_student_enrolled(student, req.get_id(), clazz.term)
+
+                if proceed:
+                    count = db.count_enrolled(clazz)
+                    if count < clazz.get_class_limit():
+                        if not cs.is_academic() or current_load + cs.get_units() <= student.get_limit():
+                            db.enlist(student, all_classes[ch - 1])
+                        else:
+                            print("You're overloaded this term!")
+                    else:
+                        print("This class is already full!")
+                else:
+                    print("You have not completed the prerequisites for this course!")
+            elif ch != 0:
+                print("Invalid class")
+
+        elif choice == 2:
+            term = int(input("Enter term: "))
+            enrollments = db.get_student_enrollment(student, term)
+            print("{0:3}  {1:15}{2:10}{3:35}{4:10}{5:10}".format("#", "Course Code", "Section", "Instructor", "Room", "Units"))
+
+            ctr = 1
+            for e in enrollments:
+                c = e.get_class()
+                cs = c.get_course()
+                ccode = cs.get_course_code()
+                i = c.get_instructor()
+                iname = "" if i is None else "{}, {} {}".format(i.get_last(), i.get_first(), i.get_middle())
+                r = c.get_room()
+                rloc = r.get_location()
+                ustr = str(cs.get_units()) + ".0" if cs.is_academic() else "(" + str(cs.get_units()) + ".0)"
+                print("{0:3}  {1:15}{2:10}{3:35}{4:10}{5:10}".format(ctr, ccode, c.get_section(), iname, rloc, ustr))
+                ctr = ctr + 1
+
+            ch = int(input("Select class: "))
+            if ch >= 1 and ch <= len(all_classes):
+                db.drop(student, e[ch - 1].get_class())
+            elif ch != 0:
+                print("Invalid class")
+
+        elif choice == 3:
+            term = int(input("Enter term: "))
+            enrollments = db.get_student_enrollment(student, term)
+            print("{0:15}{1:10}{2:35}{3:10}{4:10}".format("Course Code", "Section", "Instructor", "Room", "Units"))
+            for e in enrollments:
+                c = e.get_class()
+                cs = c.get_course()
+                ccode = cs.get_course_code()
+                i = c.get_instructor()
+                iname = "" if i is None else "{}, {} {}".format(i.get_last(), i.get_first(), i.get_middle())
                 r = c.get_room()
                 rloc = r.get_location()
                 ustr = str(cs.get_units()) + ".0" if cs.is_academic() else "(" + str(cs.get_units()) + ".0)"
@@ -288,7 +352,7 @@ def admin_courses(db : Database, admin : Admin):
                 db.delete_class(clazz.get_id())
         elif choice == 10:
             pass
-        elif choice == 10:
+        elif choice == 11:
             running = False
         else:
             print("Invalid choice")

@@ -271,8 +271,7 @@ def admin_courses(db : Database, admin : Admin):
         print("(7) Assign instructor to class")
         print("(8) View classes for course")
         print("(9) Delete class")
-        print("(10) View enrollment")
-        print("(11) Go back")
+        print("(10) Go back")
 
         choice = int(input("Enter your choice: "))
         if choice == 1:
@@ -349,8 +348,6 @@ def admin_courses(db : Database, admin : Admin):
             if clazz is not None:
                 db.delete_class(clazz.get_id())
         elif choice == 10:
-            pass
-        elif choice == 11:
             running = False
         else:
             print("Invalid choice")

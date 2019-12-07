@@ -5,8 +5,6 @@ from model.cclass import Instructor, Room
 from model.user import User, Admin, Student, UserType
 from model.course import Course
 
-
-
 def student_main(db : Database, student : Student):
     print("Welcome, " + student.get_first() + " " + student.get_middle() + " " + student.get_last())
 

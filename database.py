@@ -1,9 +1,10 @@
 import sqlite3
 from sqlite3 import Error, IntegrityError
 
-from model.user import User, UserType
+from model.user import User, Admin, Student, UserType
 from model.cclass import Class, Instructor, Room
 from model.course import Course
+from model.enrollment import Enrollment, EnrollStatus
 
 from datetime import date
 
@@ -51,22 +52,22 @@ class Database:
 
         print("An initial admin account has been created. The ID number is " + str(idno) + " and the password is: " + password)
 
-    def new_student(self, idno, password, last, first, middle):
+    def new_student(self, idno, password, last, first, middle, limit):
         sql_create_user = """
                           INSERT INTO USERS (idno, type, lastname, firstname, middlename, password)
                           VALUES (?, 'S', ?, ?, ?, ?);
                           """
         sql_create_student = """
-                             INSERT INTO STUDENTS (idno)
-                             VALUES (?);
+                             INSERT INTO STUDENTS (idno, unitlimit)
+                             VALUES (?, ?);
                              """
 
         try:
             cur = self.connection.cursor()
             cur.execute(sql_create_user, (idno, last, first, middle, password));
-            cur.execute(sql_create_student, (idno,))
+            cur.execute(sql_create_student, (idno, limit))
             self.connection.commit()
-            return User(idno, UserType.STUDENT, last, first, middle)
+            return Student(idno, last, first, middle, limit)
         except IntegrityError as e:
             print("A user with the same ID number exists already.")
         except Error as e:
@@ -89,7 +90,7 @@ class Database:
             cur.execute(sql_create_user, (idno, last, first, middle, password));
             cur.execute(sql_create_admin, (idno,))
             self.connection.commit()
-            return User(idno, UserType.ADMIN, last, first, middle)
+            return Admin(idno, last, first, middle)
         except IntegrityError as e:
             print("A user with the same ID number exists already.")
         except Error as e:
@@ -155,7 +156,7 @@ class Database:
         cur = self.connection.cursor()
         cur.execute("SELECT idno, lastname, firstname, middlename FROM INSTRUCTORS WHERE idno != 0 ORDER BY lastname, firstname, middlename, idno")
         rows = cur.fetchall()
-        return map(lambda row : Instructor(row[0], row[1], row[2], row[3]), rows)
+        return list(map(lambda row : Instructor(row[0], row[1], row[2], row[3]), rows))
 
     def edit_instructor(self, idno, last, first, middle):
         sql_update_instructor = "UPDATE INSTRUCTORS SET lastname = ?, firstname = ?, middlename = ? WHERE idno = ?"
@@ -168,7 +169,7 @@ class Database:
     def delete_instructor(self, idno):
         if idno == 0:
             return False
-            
+
         cur = self.connection.cursor()
         cur.execute("DELETE FROM INSTRUCTORS WHERE idno = ?", (idno,));
         count = cur.rowcount > 0
@@ -195,7 +196,7 @@ class Database:
         cur = self.connection.cursor()
         cur.execute("SELECT roomid, location FROM ROOMS ORDER BY location")
         rows = cur.fetchall()
-        return map(lambda row : Room(row[0], row[1]), rows)
+        return list(map(lambda row : Room(row[0], row[1]), rows))
 
     def delete_room(self, location):
         cur = self.connection.cursor()
@@ -208,14 +209,14 @@ class Database:
         cur = self.connection.cursor()
         cur.execute("INSERT INTO COURSES (coursecode, name, units, is_academic) VALUES (?, ?, ?, ?)", (coursecode, name, units, 1 if is_academic else 0))
         self.connection.commit()
-        return Course(cur.lastrowid, coursecode, name, units, is_academic, [])
+        return Course(cur.lastrowid, coursecode, name, units, is_academic)
 
     def get_course(self, coursecode):
         cur = self.connection.cursor()
         cur.execute("SELECT courseid, name, units, is_academic FROM COURSES WHERE coursecode = ?", (coursecode,))
         row = cur.fetchone()
         if row is not None:
-            return Course(row[0], coursecode, row[1], row[2], row[3] == 1, [])
+            return Course(row[0], coursecode, row[1], row[2], row[3] == 1)
         else:
             return None
 
@@ -223,7 +224,7 @@ class Database:
         cur = self.connection.cursor()
         cur.execute("SELECT courseid, coursecode, name, units, is_academic FROM COURSES ORDER BY coursecode")
         rows = cur.fetchall()
-        return map(lambda row : Course(row[0], row[1], row[2], row[3], row[4], []), rows)
+        return list(map(lambda row : Course(row[0], row[1], row[2], row[3], row[4]), rows))
         
     def delete_course(self, coursecode):
         cur = self.connection.cursor()
@@ -232,35 +233,47 @@ class Database:
         self.connection.commit()
         return count
 
-    def new_prerequisite(self, course, prereq, type):
+    def new_prerequisite(self, course, prereq):
         cur = self.connection.cursor()
-        cur.execute("INSERT INTO PREREQS (courseid, prerequisite, type) VALUES (?, ?, ?)", (course.get_id(), prereq.get_id(), type))
+        cur.execute("INSERT INTO PREREQS (courseid, prerequisite) VALUES (?, ?)", (course.get_id(), prereq.get_id()))
         self.connection.commit()
-        return (prereq, type)
 
-    def new_class(self, course : Course, section, term, classlimit):
+    def get_prerequisites(self, course):
+        cur = self.connection.cursor()
+        cur.execute("SELECT prerequisite FROM PREREQS WHERE courseid = ?", (course.get_id(),))
+        rows = cur.fetchall()
+        prereqs = list(map(lambda r : r[0]), rows)
+        return filter(lambda c : c.get_id() in prereqs, self.get_courses())
+
+    def clear_prerequisites(self, course):
+        cur = self.connection.cursor()
+        cur.execute("DELETE FROM PREREQS WHERE courseid = ?", (course.get_id(),))
+        self.connection.commit()
+
+    def new_class(self, course : Course, section, term, room, classlimit):
         sql_create_class = """
-                           INSERT INTO CLASSES (courseid, section, term, instructor, classlimit)
-                           VALUES (?, ?, ?, ?, ?)
+                           INSERT INTO CLASSES (courseid, section, term, instructor, room, classlimit)
+                           VALUES (?, ?, ?, ?, ?, ?)
                            """
 
         cur = self.connection.cursor()
-        cur.execute(sql_create_class, (course.get_id(), section, term, 0, classlimit))
+        cur.execute(sql_create_class, (course.get_id(), section, term, 0, room.get_id(), classlimit))
         self.connection.commit()
-        return Class(cur.lastrowid, course, section, term, None, classlimit, [])
+        return Class(cur.lastrowid, course, section, term, None, room, classlimit)
 
     def get_classes(self, course, term):
         sql_select_class = """
-                           SELECT classid, section, idno, lastname, firstname, middlename, classlimit
+                           SELECT classid, section, idno, lastname, firstname, middlename, room, location, classlimit
                            FROM CLASSES
                            JOIN INSTRUCTORS ON instructor = idno
+                           JOIN ROOMS ON room = roomid
                            WHERE courseid = ? AND term = ?
                            """
         
         cur = self.connection.cursor()
         cur.execute(sql_select_class, (course.get_id(), term))
         rows = cur.fetchall()
-        return map(lambda row : Class(row[0], course, row[1], term, None if row[2] == 0 else Instructor(row[2], row[3], row[4], row[5]), row[6], []), rows)
+        return list(map(lambda row : Class(row[0], course, row[1], term, None if row[2] == 0 else Instructor(row[2], row[3], row[4], row[5]), Room(row[6], row[7]), row[8]), rows))
 
     def delete_class(self, classid):
         cur = self.connection.cursor()
@@ -273,6 +286,35 @@ class Database:
         cur = self.connection.cursor()
         cur.execute("UPDATE CLASSES SET instructor = ? WHERE classid = ?", (instructor.get_id(), classid))
         self.connection.commit()
+
+    def enlist(self, student, clazz):
+        pass
+
+    def drop(self, student, clazz):
+        pass
+
+    def get_student_enrollment(self, student, term):
+        sql_select_enroll = """
+                            SELECT enrollid, ENROLLMENTS.classid, status,
+                                   section, room, location,
+                                   INSTRUCTORS.idno, lastname, firstname, middlename,
+                                   COURSES.courseid, coursecode, COURSES.name, units, is_academic,
+                                   classlimit
+                            FROM ENROLLMENTS
+                            JOIN CLASSES ON ENROLLMENTS.classid = CLASSES.classid
+                            JOIN INSTRUCTORS ON instructor = INSTRUCTORS.idno
+                            JOIN ROOMS ON room = roomid
+                            JOIN COURSES ON CLASSES.courseid = COURSES.courseid
+                            WHERE studentid = ? AND CLASSES.term = ?
+                            """
+        
+        cur = self.connection.cursor()
+        cur.execute(sql_select_enroll, (student.get_id(), term))
+        rows = cur.fetchall()
+        return list(map(lambda row : Enrollment(row[0], student, Class(row[1], Course(row[10], row[11], row[12], row[13], row[14]), row[3], term, Instructor(row[6], row[7], row[8], row[9]), Room(row[4], row[5]), row[15]) , row[2]), rows))
+
+
+        
 
     def login(self, idno, password):
         sql_login = """
@@ -288,10 +330,17 @@ class Database:
         if row is not None:
             if row[0] == 'A':
                 # we have an admin
-                return User(idno, UserType.ADMIN, row[1], row[2], row[3])
+                return Admin(idno, row[1], row[2], row[3])
             elif row[0] == 'S':
                 # we have a student
-                return User(idno, UserType.STUDENT, row[1], row[2], row[3])
+                
+                cur = self.connection.cursor()
+                cur.execute("SELECT unitlimit FROM STUDENTS WHERE idno = ?", (idno,))
+                row1 = cur.fetchone()
+                if row1 is not None:
+                    return Student(idno, row[1], row[2], row[3], row1[0])
+                else:
+                    raise Error("Database error")
             else:
                 raise Error("Invalid user type")
         else:

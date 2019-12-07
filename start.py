@@ -2,12 +2,12 @@
 
 from database import Database
 from model.cclass import Instructor, Room
-from model.user import User, UserType
+from model.user import User, Admin, Student, UserType
 from model.course import Course
 
 
 
-def student_main(db : Database, student : User):
+def student_main(db : Database, student : Student):
     print("Welcome, " + student.get_first() + " " + student.get_middle() + " " + student.get_last())
 
     running = True
@@ -15,19 +15,100 @@ def student_main(db : Database, student : User):
         print("(1) Enlist in class")
         print("(2) Drop class")
         print("(3) View enlistment")
-        print("(4) View schedule")
-        print("(5) Change password")
-        print("(6) Log out")
+        print("(4) Change password")
+        print("(5) Log out")
 
         choice = int(input("Enter your choice: "))
         if choice == 1:
+
             pass
-        elif choice == 6:
+        elif choice == 2:
+            pass
+        elif choice == 3:
+            term = int(input("Enter term: "))
+            classes = db.get_student_enrollment(student, term)
+            print("{0:15}{1:10}{2:35}{3:10}{4:10}".format("Course Code", "Section", "Instructor", "Room", "Units"))
+            for c in classes:
+                cs = c.get_course()
+                ccode = cs.get_course_code()
+                i = c.get_instructor()
+                iname = "{}, {} {}".format(i.get_last(), i.get_first(), i.get_middle())
+                r = c.get_room()
+                rloc = r.get_location()
+                ustr = str(cs.get_units()) + ".0" if cs.is_academic() else "(" + str(cs.get_units()) + ".0)"
+                print("{0:15}{1:10}{2:35}{3:10}{4:10}".format(ccode, c.get_section(), iname, rloc, ustr))
+
+        elif choice == 4:
+            password = input("Verify password: ")
+            verify = db.login(student.get_id(), password)
+            if verify is not None:
+                newpass = input("Enter new password: ")
+                db.edit_password(student.get_id(), newpass)
+            else:
+                print("Cannot verify user")
+        elif choice == 5:
             running = False
         else:
             print("Invalid choice")
 
-def admin_accounts(db : Database, admin : User):
+def admin_choose_instructor(db : Database):
+    insts = db.get_instructors()
+    ctr = 1
+    print("(0) Cancel")
+    for i in insts:
+        print("(" + str(ctr) + ") " + i.get_last() + ", " + i.get_first() + " " + i.get_middle())
+        ctr = ctr + 1
+    ch = int(input("Select instructor: "))
+    if ch >= 1 and ch <= len(insts):
+        return insts[ch - 1]
+    elif ch != 0:
+        print("Invalid instructor")
+    return None
+
+def admin_choose_course(db : Database):
+    ccode = input("Enter course code: ")
+    course = db.get_course(ccode)
+    if course is not None:
+        return course
+    else:
+        print("Not a valid course")
+        return None
+
+def admin_choose_class(db : Database):
+    course = admin_choose_course(db)
+    if course is not None:
+        term = int(input("Enter term: "))
+        classes = db.get_classes(course, term)
+        if len(classes) > 0:
+            ctr = 1
+            for c in classes:
+                print("(" + str(ctr) + ") " + c.get_section())
+                ctr = ctr + 1
+            ch = int(input("Select class: "))
+            if ch >= 1 and ch <= len(classes):
+                return classes[ch - 1]
+            else:
+                print("Invalid class")
+        else:
+            print("There are no classes for this course")
+    return None
+
+def admin_choose_room(db : Database):
+    rooms = db.get_rooms()
+    ctr = 1
+    print("(0) Cancel")
+    for i in rooms:
+        print("(" + str(ctr) + ") " + i.get_location())
+        ctr = ctr + 1
+    ch = int(input("Select room: "))
+    if ch >= 1 and ch <= len(rooms):
+        return rooms[ch - 1]
+    elif ch != 0:
+        print("Invalid room")
+    return None
+
+
+def admin_accounts(db : Database, admin : Admin):
     running = True
     while running:
         print("(1) New admin account")
@@ -51,7 +132,8 @@ def admin_accounts(db : Database, admin : User):
             last = input("Enter last name: ")
             first = input("Enter first name: ")
             middle = input("Enter middle name: ")
-            db.new_student(idno, "", last, first, middle)
+            load = int(input("Enter max units: "))
+            db.new_student(idno, "", last, first, middle, load)
         
         elif choice == 3:
             password = input("Verify password: ")
@@ -115,22 +197,20 @@ def admin_accounts(db : Database, admin : User):
             print("Invalid choice")
 
 
-def admin_courses(db : Database, admin : User):
+def admin_courses(db : Database, admin : Admin):
     running = True
     while running:
         print("(1) Add course")
         print("(2) Set prerequisite")
-        print("(3) View courses")
-        print("(4) Remove course")
-        print("(5) Create class")
-        print("(6) Assign instructor to class")
-        print("(7) View classes for course")
-        print("(8) Delete class")
-        print("(9) View enrollment")
-        print("(10) Create schedule for class")
-        print("(11) View schedule for class")
-        print("(12) Delete schedule for class")
-        print("(13) Go back")
+        print("(3) Clear prerequisites")
+        print("(4) View courses")
+        print("(5) Remove course")
+        print("(6) Create class")
+        print("(7) Assign instructor to class")
+        print("(8) View classes for course")
+        print("(9) Delete class")
+        print("(10) View enrollment")
+        print("(11) Go back")
 
         choice = int(input("Enter your choice: "))
         if choice == 1:
@@ -146,109 +226,74 @@ def admin_courses(db : Database, admin : User):
                 prereq = input("Enter prerequisite: ")
                 prereqc = db.get_course(prereq)
                 if prereqc is not None:
-                    print("(1) Hard prerequisite")
-                    print("(2) Soft prerequisite")
-                    type = int(input("Enter type: "))
-                    if type >= 1 and type <= 2:
-                        db.new_prerequisite(course, prereqc, type)
-                    else:
-                        print("Invalid type")
+                    db.new_prerequisite(course, prereqc)
                 else:
                     print("No course found")
             else:
                 print("No course found")
         elif choice == 3:
+            code = input("Enter course code: ")
+            course = db.get_course(code)
+            if course is not None:
+                db.clear_prerequisites(course)
+            else:
+                print("No course found")
+        elif choice == 4:
             courses = db.get_courses()
-            print("{0:16}{1:40}{2:8}".format("Course code", "Course name", "Units"))
+            print("{0:16}{1:56}{2:8}".format("Course code", "Course name", "Units"))
             for course in courses:
                 units = course.get_units()
                 ccode = course.get_course_code()
                 cname = course.get_name()
-                print("{0:16}{1:40}{2:8}".format(ccode, cname, str(units) + ".0" if course.is_academic() else "(" + str(units) + ".0)"))
+                print("{0:16}{1:56}{2:8}".format(ccode, cname, str(units) + ".0" if course.is_academic() else "(" + str(units) + ".0)"))
             print()
-        elif choice == 4:
+        elif choice == 5:
             code = input("Enter course code to delete: ")
             db.delete_course(code)
-        elif choice == 5:
+        elif choice == 6:
             ccode = input("Enter course code for new class: ")
             course = db.get_course(ccode)
             if course is not None:
                 section = input("Enter section name: ")
                 term = int(input("Enter term (year/term): "))
                 classlimit = input("Enter class limit: ")
-                db.new_class(course, section, term, classlimit)
-            else:
-                print("Not a valid course")
-        elif choice == 6:
-            ccode = input("Enter course code: ")
-            course = db.get_course(ccode)
-            if course is not None:
-                term = int(input("Enter term: "))
-                classes = db.get_classes(course, term)
-                if len(classes) > 0:
-                    ctr = 1
-                    for c in classes:
-                        print("(" + str(ctr) + ") " + c.get_section())
-                        ctr = ctr + 1
-                    ch = int(input("Select class: "))
-                    if ch >= 1 and ch <= len(classes):
-                        insts = db.get_instructors()
-                        ctr = 1
-                        for i in insts:
-                            print("(" + str(ctr) + ") " + i.get_last() + ", " + i.get_first() + " " + i.get_middle())
-                            ctr = ctr + 1
-                        ch2 = int(input("Select instructor: "))
-                        if ch2 >= 1 and ch2 <= len(insts):
-                            db.assign_instructor(classes[ch - 1].get_id(), insts[ch2 - 1])
-                        else:
-                            print("Invalid instructor")
-                    else:
-                        print("Invalid class")
+                room = admin_choose_room(db)
+                if room is not None:
+                    db.new_class(course, section, term, room, classlimit)
                 else:
-                    print("There are no classes for this course")
+                    print("Invalid room")            
             else:
                 print("Not a valid course")
         elif choice == 7:
-            ccode = input("Enter course code: ")
-            course = db.get_course(ccode)
-            if course is not None:
-                term = int(input("Enter term: "))
-                classes = db.get_classes(course, term)
-                if len(classes) > 0:
-                    for c in classes:
-                        print(c.get_section())
-                else:
-                    print("There are no classes for this course")
-            else:
-                print("Not a valid course")
+            clazz = admin_choose_class(db)
+            if clazz is not None:
+                inst = admin_choose_instructor(db)
+                if inst is not None:
+                    db.assign_instructor(clazz.get_id(), inst)
         elif choice == 8:
-            ccode = input("Enter course code: ")
-            course = db.get_course(ccode)
+            course = admin_choose_course(db)
             if course is not None:
                 term = int(input("Enter term: "))
                 classes = db.get_classes(course, term)
                 if len(classes) > 0:
-                    ctr = 1
+                    print("{0:10}{1:40}".format("Section", "Instructor"))
                     for c in classes:
-                        print("(" + str(ctr) + ") " + c.get_section())
-                        ctr = ctr + 1
-                    ch = int(input("Select class: "))
-                    if ch >= 1 and ch <= len(classes):
-                        db.delete_class(c.get_id())
-                    else:
-                        print("Invalid class")
+                        i = c.get_instructor()
+                        print("{0:10}{1:40}".format(c.get_section(), "{}, {} {}".format(i.get_last(), i.get_first(), i.get_middle())))
                 else:
                     print("There are no classes for this course")
-            else:
-                print("Not a valid course")
         elif choice == 9:
+            clazz = admin_choose_class(db)
+            if clazz is not None:
+                db.delete_class(clazz.get_id())
+        elif choice == 10:
             pass
-        elif choice == 13:
+        elif choice == 10:
             running = False
         else:
             print("Invalid choice")
 
-def admin_rooms(db : Database, admin : User):
+def admin_rooms(db : Database, admin : Admin):
     running = True
     while running:
         print("(1) Add room")
@@ -267,17 +312,18 @@ def admin_rooms(db : Database, admin : User):
                 print(room.get_location())
             print()
         elif choice == 3:
-            location = input("Enter location of room: ")
-            if db.delete_room(location):
-                print("Successfully removed room")
-            else:
-                print("Nothing was removed")
+            room = admin_choose_room(db)
+            if room is not None:
+                if db.delete_room(room.get_location()):
+                    print("Successfully removed room")
+                else:
+                    print("Nothing was removed")
         elif choice == 4:
             running = False
         else:
             print("Invalid choice")
 
-def admin_instructors(db : Database, admin : User):
+def admin_instructors(db : Database, admin : Admin):
     running = True
     while running:
         print("(1) Add instructor")
@@ -325,7 +371,7 @@ def admin_instructors(db : Database, admin : User):
         else:
             print("Invalid choice")
 
-def admin_main(db : Database, admin : User):
+def admin_main(db : Database, admin : Admin):
     print("Welcome, " + admin.get_first() + " " + admin.get_middle() + " " + admin.get_last())
 
     running = True

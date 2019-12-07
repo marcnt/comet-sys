@@ -32,3 +32,17 @@ class User:
 
     def get_middle(self):
         return self.middle_name
+
+class Admin(User):
+    def __init__(self, id, last, first, middle):
+        super().__init__(id, UserType.ADMIN, last, first, middle)
+
+class Student(User):
+    limit = 0
+
+    def __init__(self, id, last, first, middle, load):
+        super().__init__(id, UserType.STUDENT, last, first, middle)
+        self.limit = load
+
+    def get_limit(self):
+        return self.limit

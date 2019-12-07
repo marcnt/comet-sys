@@ -22,9 +22,11 @@ def student_main(db : Database, student : Student):
             current_load = db.get_student_load(student, term)
             print("Your load: " + str(current_load) + ".0 units")
             all_classes = db.get_all_classes(term)
-            print("{0:3}  {1:15}{2:10}{3:35}{4:10}{5:10}".format("#", "Course Code", "Section", "Instructor", "Room", "Units"))
+            print("{0:3}  {1:15}{2:10}{3:35}{4:10}{5:10}{6:15}".format("#", "Course Code", "Section", "Instructor", "Room", "Units", "Occupancy"))
             ctr = 1
-            for c in all_classes:
+            for cp in all_classes:
+                c = cp[0]
+                count = cp[1]
                 cs = c.get_course()
                 ccode = cs.get_course_code()
                 i = c.get_instructor()
@@ -32,12 +34,12 @@ def student_main(db : Database, student : Student):
                 r = c.get_room()
                 rloc = r.get_location()
                 ustr = str(cs.get_units()) + ".0" if cs.is_academic() else "(" + str(cs.get_units()) + ".0)"
-                print("{0:3}  {1:15}{2:10}{3:35}{4:10}{5:10}".format(ctr, ccode, c.get_section(), iname, rloc, ustr))
+                print("{0:3}  {1:15}{2:10}{3:35}{4:10}{5:10}{6:15}".format(ctr, ccode, c.get_section(), iname, rloc, ustr, str(count) + "/" + str(c.get_class_limit())))
                 ctr = ctr + 1
 
             ch = int(input("Select class: "))
             if ch >= 1 and ch <= len(all_classes):
-                clazz = all_classes[ch - 1]
+                clazz = all_classes[ch - 1][0]
                 prereqs = db.get_prerequisites(clazz.get_course())
                 
                 proceed = True
@@ -51,7 +53,7 @@ def student_main(db : Database, student : Student):
                     count = db.count_enrolled(clazz)
                     if count < clazz.get_class_limit():
                         if not cs.is_academic() or current_load + cs.get_units() <= student.get_limit():
-                            db.enlist(student, all_classes[ch - 1])
+                            db.enlist(student, clazz)
                         else:
                             print("You're overloaded this term!")
                     else:

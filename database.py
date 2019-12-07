@@ -277,20 +277,22 @@ class Database:
 
     def get_all_classes(self, term):
         sql_select_class = """
-                           SELECT classid, section, idno, lastname, firstname, middlename, room, location, classlimit,
-                                  COURSES.courseid, coursecode, name, units, is_academic
+                           SELECT CLASSES.classid, section, idno, lastname, firstname, middlename, room, location, classlimit,
+                                  COURSES.courseid, coursecode, name, units, is_academic, COUNT(enrollid)
                            FROM CLASSES
+                           LEFT JOIN ENROLLMENTS ON ENROLLMENTS.classid = CLASSES.classid
                            JOIN INSTRUCTORS ON instructor = idno
                            JOIN ROOMS ON room = roomid
                            JOIN COURSES ON CLASSES.courseid = COURSES.courseid
                            WHERE term = ?
+                           GROUP BY ENROLLMENTS.classid
                            ORDER BY coursecode, section
                            """
         
         cur = self.connection.cursor()
         cur.execute(sql_select_class, (term,))
         rows = cur.fetchall()
-        return list(map(lambda row : Class(row[0], Course(row[9], row[10], row[11], row[12], row[13] != 0), row[1], term, None if row[2] == 0 else Instructor(row[2], row[3], row[4], row[5]), Room(row[6], row[7]), row[8]), rows))
+        return list(map(lambda row : (Class(row[0], Course(row[9], row[10], row[11], row[12], row[13] != 0), row[1], term, None if row[2] == 0 else Instructor(row[2], row[3], row[4], row[5]), Room(row[6], row[7]), row[8]), 0 if row[14] is None else row[14]), rows))
 
     def delete_class(self, classid):
         cur = self.connection.cursor()
